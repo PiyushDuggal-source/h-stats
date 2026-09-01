@@ -232,6 +232,9 @@ function StatsPanel({ tokHistory }) {
 const FORMATS = ["tok/s", "total", "cost"];
 function DshChip({ storage }) {
   const { rate, usage } = useTokPerSec();
+  // Persistent update watcher — runs on the chip so the badge shows even
+  // with the popover closed (UpdateButton re-uses the same throttled check).
+  const update = useUpdateCheck(null);
   // Live model of the focused session wins; composer slug is the cold fallback.
   const composerModel = useValue(host.state.model);
   const model = (usage && usage.model) || composerModel || "";
@@ -273,7 +276,19 @@ function DshChip({ storage }) {
               "flex items-center gap-1.5 rounded px-1.5 text-xs text-(--ui-text-secondary) hover:text-(--ui-text-primary)",
             ),
             children: [
-              h(Codicon, { name: "pulse", size: 12 }),
+              h("span", {
+                key: "pulse-wrap",
+                className: "relative flex items-center",
+                children: [
+                  h(Codicon, { name: "pulse", size: 12 }),
+                  update.state === "behind" && update.behind > 0
+                    ? h("span", {
+                        className:
+                          "absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-(--accent,#7c9cff)",
+                      })
+                    : null,
+                ],
+              }),
               h("span", { className: "tabular-nums", children: shortModel }),
               h("span", {
                 className: "text-(--ui-text-quaternary)",
