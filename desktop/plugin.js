@@ -158,9 +158,16 @@ function StatsPanel({ tokHistory }) {
   // turn) — falls back to the composer slug only while no usage exists yet.
   const composerModel = useValue(host.state.model);
   const model = (usage && usage.model) || composerModel || "";
-  // Provider prefix exists only on provider-scoped slugs (`zai/glm-5.3-flash`);
-  // a bare slug (e.g. `glm-5.3-flash`) carries no provider, so show "—".
-  const provider = model.includes("/") ? model.split("/")[0] : "—";
+  // The gateway's usage.model is a BARE slug (agent.model carries no provider
+  // prefix — provider lives in agent.provider, which focusedUsage doesn't
+  // stream). The composer slug (`zai/glm-5.3-flash`) is the only surface that
+  // names the provider, so take its prefix; "—" when neither has one.
+  const provider =
+    composerModel && composerModel.includes("/")
+      ? composerModel.split("/")[0]
+      : model.includes("/")
+        ? model.split("/")[0]
+        : "—";
   const fmt = fmtTok;
   return h("div", {
     className: "flex w-56 flex-col gap-0.5 p-1",
