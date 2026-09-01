@@ -12,7 +12,8 @@ const sdk={
   PopoverTrigger:function PopoverTrigger(p){return jsx('pt',p)},
   cn:(...a)=>a.filter(Boolean).join(' '),
   host:{ state:{ focusedUsage: makeAtom(null), model: makeAtom('nous/stealth-ox-alpha') }, navigate(){},
-    request:(method)=>Promise.resolve({code:1,stdout:'',stderr:'no shell in gate'}), notify(){} },
+    request:(method)=>Promise.resolve({code:1,stdout:'',stderr:'no shell in gate'}), notify(){},
+    onEvent:(type,fn)=>{ if(type==='session.info') queueMicrotask(()=>fn({payload:{model:'glm-5.3-flash',provider:'z-ai'}})); return ()=>{}; } },
   useValue:(atom)=>atom.get(),
 }
 let src=await readFile(process.env.HOME+'/.hermes/plugins/h-stats/desktop/plugin.js','utf8')

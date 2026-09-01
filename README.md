@@ -25,16 +25,23 @@ Click the chip for the full popover:
 
 | Row | What it shows |
 | --- | --- |
-| Model · Provider | The focused session's live model and its provider prefix (`zai/glm-5.3-flash` → provider `zai`). Bare slugs show "—". |
+| Model · Provider | The focused session's live model and provider, as reported by the gateway's `session.info` events |
 | In / Out | Input and output tokens for the focused session |
 | Context | Percent used of the context window |
 | Cache hit | Rolling cache-read ratio |
 | Avg latency | Mean API latency over the last 10 calls |
 | Avg tok/s | Gateway-computed throughput |
-| Cost | Session cost in USD |
 | tok/s trend | Live sparkline of the last 30 samples |
 
 Everything follows tile focus — switch sessions, the numbers switch with you.
+
+## Self-updating
+
+The plugin checks its git upstream (once an hour, and on every app start).
+When a new commit lands on `main`, you get a toast and a dot on the chip —
+open the popover and click the sync button to `git pull --ff-only`. The
+desktop hot-reloads the change; no restart. Installed without git? The update
+button simply doesn't render.
 
 ## Where the numbers come from
 

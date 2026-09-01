@@ -120,6 +120,31 @@ function fmtTok(n) {
   return String(n);
 }
 
+// ---------- provider/model from gateway session.info events ----------
+// focusedUsage carries a BARE model slug and NO provider. The gateway's
+// session.info events carry both (`payload.model` / `payload.provider`,
+// see desktop use-message-stream sessionInfoStatePatch) — the authoritative
+// source. Capture the latest event's pair; null until one arrives.
+function useSessionInfo() {
+  const [info, setInfo] = useState(null); // { model, provider }
+  useEffect(() => {
+    if (!host.onEvent) return;
+    let alive = true;
+    const dispose = host.onEvent("session.info", (event) => {
+      if (!alive) return;
+      const payload = event?.payload || event;
+      if (payload && (typeof payload.model === "string" || typeof payload.provider === "string")) {
+        setInfo({ model: payload.model || null, provider: payload.provider || null });
+      }
+    });
+    return () => {
+      alive = false;
+      try { dispose?.(); } catch {}
+    };
+  }, []);
+  return info;
+}
+
 // ---------- whole-stats popover ----------
 // Stable-identity row component (module scope): defining components inside a
 // render body gives them a new type every re-render → React remounts the whole
@@ -154,26 +179,25 @@ function Row({ label, value, source }) {
 
 function StatsPanel({ tokHistory }) {
   const usage = useValue(host.state.focusedUsage);
-  // Live model of the FOCUSED session (streamed by the gateway on every
-  // turn) — falls back to the composer slug only while no usage exists yet.
+  const info = useSessionInfo();
   const composerModel = useValue(host.state.model);
-  const model = (usage && usage.model) || composerModel || "";
-  // The gateway's usage.model is a BARE slug (agent.model carries no provider
-  // prefix — provider lives in agent.provider, which focusedUsage doesn't
-  // stream). The composer slug (`zai/glm-5.3-flash`) is the only surface that
-  // names the provider, so take its prefix; "—" when neither has one.
+  // Ladder: gateway session.info provider (authoritative) → prefix of the
+  // session.info model slug → prefix of the focusedUsage/composer slug → "—".
+  // focusedUsage.model alone is a BARE slug (agent.model has no prefix), so a
+  // bare slug must NOT render itself as the provider.
+  const slugCandidates = [info?.model, usage && usage.model, composerModel];
   const provider =
-    composerModel && composerModel.includes("/")
-      ? composerModel.split("/")[0]
-      : model.includes("/")
-        ? model.split("/")[0]
-        : "—";
+    info?.provider ||
+    slugCandidates.map((s) => (s && s.includes("/") ? s.split("/")[0] : null)).find(Boolean) ||
+    null;
+  const providerLabel = provider || "—";
+  const model = info?.model || (usage && usage.model) || composerModel || "";
   const fmt = fmtTok;
   return h("div", {
     className: "flex w-56 flex-col gap-0.5 p-1",
     children: [
       h(Row, { key: "model", label: "Model", value: model.split("/").pop() || null }),
-      h(Row, { key: "provider", label: "Provider", value: provider }),
+      h(Row, { key: "provider", label: "Provider", value: providerLabel }),
       h(Row, { key: "in", label: "In", value: fmt(usage?.input), source: "live" }),
       h(Row, { key: "out", label: "Out", value: fmt(usage?.output), source: "live" }),
       h(Row, {
@@ -202,12 +226,15 @@ function StatsPanel({ tokHistory }) {
         value: usage?.avg_tps != null ? `${usage.avg_tps}` : null,
         source: "live",
       }),
-      h(Row, {
-        key: "cost",
-        label: "Cost",
-        value: usage?.cost_usd != null ? `$${Number(usage.cost_usd).toFixed(4)}` : null,
-        source: "live",
-      }),
+      // Cost row disabled: the gateway's _get_usage (tui_gateway/server.py)
+      // never streams cost_usd into focusedUsage, so this always rendered "—".
+      // Re-enable once the backend adds usage["cost_usd"].
+      // h(Row, {
+      //   key: "cost",
+      //   label: "Cost",
+      //   value: usage?.cost_usd != null ? `$${Number(usage.cost_usd).toFixed(4)}` : null,
+      //   source: "live",
+      // }),
       h("div", {
         key: "spark",
         className: "mt-2 flex flex-col gap-0.5 border-t border-(--border) pt-2",
@@ -229,7 +256,9 @@ function StatsPanel({ tokHistory }) {
 }
 
 // ---------- chip ----------
-const FORMATS = ["tok/s", "total", "cost"];
+// "cost" dropped from the cycle: gateway never streams cost_usd (see
+// commented Cost row in StatsPanel). Add it back when the backend does.
+const FORMATS = ["tok/s", "total"];
 function DshChip({ storage }) {
   const { rate, usage } = useTokPerSec();
   // Persistent update watcher — runs on the chip so the badge shows even
@@ -263,7 +292,6 @@ function DshChip({ storage }) {
   let statText = "—"
   if (format === "tok/s") statText = rate != null ? `${rate} tok/s` : usage ? "idle" : "—"
   else if (format === "total") statText = usage?.total != null ? `${fmtTok(usage.total)} tok` : "—"
-  else if (format === "cost") statText = usage?.cost_usd != null ? `$${Number(usage.cost_usd).toFixed(4)}` : "—"
   return h(PanelBoundary, {
     children: h(Popover, {
       children: [
@@ -358,6 +386,8 @@ function useUpdateCheck(notify) {
   const [state, setState] = useState("idle"); // idle | checking | current | behind | updated | error | no-git
   const [behind, setBehind] = useState(0);
   const [detail, setDetail] = useState("");
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
   const run = async (apply) => {
     setState("checking");
     const r = apply ? await applyUpdate() : await checkForUpdate();
@@ -379,7 +409,15 @@ function useUpdateCheck(notify) {
     _storage.set?.(ID + ":last-check", String(Date.now()));
     checkForUpdate().then((r) => {
       if (cancelled) return;
-      if (r.status === "behind") setBehind(r.behind);
+      if (r.status === "behind") {
+        setBehind(r.behind);
+        // Update DROPPED — announce it even though the popover is closed.
+        notifyRef.current?.({
+          kind: "info",
+          title: "h-stats",
+          message: `Update available — ${r.behind} new commit${r.behind > 1 ? "s" : ""}. Open the stats popover and click the sync button to update.`,
+        });
+      }
       setState(r.status);
     });
     return () => {
