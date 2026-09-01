@@ -120,31 +120,6 @@ function fmtTok(n) {
   return String(n);
 }
 
-// ---------- provider/model from gateway session.info events ----------
-// focusedUsage carries a BARE model slug and NO provider. The gateway's
-// session.info events carry both (`payload.model` / `payload.provider`,
-// see desktop use-message-stream sessionInfoStatePatch) — the authoritative
-// source. Capture the latest event's pair; null until one arrives.
-function useSessionInfo() {
-  const [info, setInfo] = useState(null); // { model, provider }
-  useEffect(() => {
-    if (!host.onEvent) return;
-    let alive = true;
-    const dispose = host.onEvent("session.info", (event) => {
-      if (!alive) return;
-      const payload = event?.payload || event;
-      if (payload && (typeof payload.model === "string" || typeof payload.provider === "string")) {
-        setInfo({ model: payload.model || null, provider: payload.provider || null });
-      }
-    });
-    return () => {
-      alive = false;
-      try { dispose?.(); } catch {}
-    };
-  }, []);
-  return info;
-}
-
 // ---------- whole-stats popover ----------
 // Stable-identity row component (module scope): defining components inside a
 // render body gives them a new type every re-render → React remounts the whole
@@ -181,23 +156,12 @@ function StatsPanel({ tokHistory }) {
   const usage = useValue(host.state.focusedUsage);
   const info = useSessionInfo();
   const composerModel = useValue(host.state.model);
-  // Ladder: gateway session.info provider (authoritative) → prefix of the
-  // session.info model slug → prefix of the focusedUsage/composer slug → "—".
-  // focusedUsage.model alone is a BARE slug (agent.model has no prefix), so a
-  // bare slug must NOT render itself as the provider.
-  const slugCandidates = [info?.model, usage && usage.model, composerModel];
-  const provider =
-    info?.provider ||
-    slugCandidates.map((s) => (s && s.includes("/") ? s.split("/")[0] : null)).find(Boolean) ||
-    null;
-  const providerLabel = provider || "—";
   const model = info?.model || (usage && usage.model) || composerModel || "";
   const fmt = fmtTok;
   return h("div", {
     className: "flex w-56 flex-col gap-0.5 p-1",
     children: [
       h(Row, { key: "model", label: "Model", value: model.split("/").pop() || null }),
-      h(Row, { key: "provider", label: "Provider", value: providerLabel }),
       h(Row, { key: "in", label: "In", value: fmt(usage?.input), source: "live" }),
       h(Row, { key: "out", label: "Out", value: fmt(usage?.output), source: "live" }),
       h(Row, {

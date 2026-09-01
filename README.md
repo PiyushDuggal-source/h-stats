@@ -25,7 +25,7 @@ Click the chip for the full popover:
 
 | Row | What it shows |
 | --- | --- |
-| Model · Provider | The focused session's live model and provider, as reported by the gateway's `session.info` events |
+| Model | The focused session's live model |
 | In / Out | Input and output tokens for the focused session |
 | Context | Percent used of the context window |
 | Cache hit | Rolling cache-read ratio |
