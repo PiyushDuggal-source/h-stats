@@ -16,6 +16,8 @@ from the session you're looking at.
 
 </div>
 
+![h-stats popover — live model stats](docs/screenshot.png)
+
 ## What's on the chip
 
 The status bar shows `{model} · {stat}`. Right-click the chip to cycle the
