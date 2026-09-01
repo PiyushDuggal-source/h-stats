@@ -2,6 +2,12 @@
 
 <div align="center">
 
+  <img src="https://raw.githubusercontent.com/NousResearch/hermes-agent/refs/heads/main/assets/banner.png" alt="Hermes Agent banner" width="100%" />
+
+</div>
+
+<div align="center">
+
 **Live model stats, right in your Hermes status bar.**
 
 One chip: what's running, how fast it's streaming, what it costs. Click it and
