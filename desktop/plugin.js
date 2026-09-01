@@ -154,9 +154,8 @@ function Row({ label, value, source }) {
 
 function StatsPanel({ tokHistory }) {
   const usage = useValue(host.state.focusedUsage);
-  const info = useSessionInfo();
   const composerModel = useValue(host.state.model);
-  const model = info?.model || (usage && usage.model) || composerModel || "";
+  const model = (usage && usage.model) || composerModel || "";
   const fmt = fmtTok;
   return h("div", {
     className: "flex w-56 flex-col gap-0.5 p-1",
