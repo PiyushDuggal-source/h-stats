@@ -11,7 +11,8 @@ const sdk={
   PopoverContent:function PopoverContent(p){return jsx('pc',p)},
   PopoverTrigger:function PopoverTrigger(p){return jsx('pt',p)},
   cn:(...a)=>a.filter(Boolean).join(' '),
-  host:{ state:{ focusedUsage: makeAtom(null), model: makeAtom('nous/stealth-ox-alpha') }, navigate(){} },
+  host:{ state:{ focusedUsage: makeAtom(null), model: makeAtom('nous/stealth-ox-alpha') }, navigate(){},
+    request:(method)=>Promise.resolve({code:1,stdout:'',stderr:'no shell in gate'}), notify(){} },
   useValue:(atom)=>atom.get(),
 }
 let src=await readFile(process.env.HOME+'/.hermes/plugins/h-stats/desktop/plugin.js','utf8')

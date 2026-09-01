@@ -219,6 +219,11 @@ function StatsPanel({ tokHistory }) {
           h(Sparkline, { values: tokHistory }),
         ],
       }),
+      h("div", {
+        key: "update",
+        className: "flex items-center justify-end border-t border-(--border) pt-1",
+        children: h(UpdateButton, { notify: null }),
+      }),
     ],
   });
 }
@@ -289,6 +294,110 @@ function DshChip({ storage }) {
       ],
     }),
   });
+}
+
+// ---------- self-update (check + pull via gateway shell.exec) ----------
+// The plugin lives in a git clone, so updates are plain git. DIR is derived at
+// runtime from the fact that shell.exec runs with the gateway's cwd (the user's
+// home): the plugin resolves its own absolute directory by asking git where the
+// clone containing this file is — portable across machines, no hardcoded path.
+let _dirPromise = null;
+function pluginDir() {
+  if (!_dirPromise) {
+    _dirPromise = host
+      .request("shell.exec", {
+        command: 'd="$HOME/.hermes/plugins/' + ID + '"; [ -d "$d/.git" ] && echo "$d"',
+      })
+      .then((r) => (r && r.code === 0 ? String(r.stdout || "").trim() : ""))
+      .catch(() => "");
+  }
+  return _dirPromise;
+}
+
+function sh(cmd) {
+  return host
+    .request("shell.exec", { command: cmd })
+    .then((r) => ({ code: r?.code, out: String(r?.stdout || ""), err: String(r?.stderr || "") }))
+    .catch((e) => ({ code: -1, out: "", err: String(e) }));
+}
+
+async function checkForUpdate() {
+  const dir = await pluginDir();
+  if (!dir) return { status: "no-git" };
+  await sh(`git -C "${dir}" fetch origin --quiet`);
+  const behind = await sh(`git -C "${dir}" rev-list HEAD..origin/main --count`);
+  const n = parseInt(String(behind.out).trim(), 10);
+  if (!Number.isFinite(n)) return { status: "error", detail: behind.err };
+  return { status: n > 0 ? "behind" : "current", behind: n };
+}
+
+async function applyUpdate() {
+  const dir = await pluginDir();
+  if (!dir) return { status: "no-git" };
+  const pull = await sh(`git -C "${dir}" pull --ff-only origin main`);
+  if (pull.code !== 0) return { status: "error", detail: pull.err || pull.out };
+  return { status: "updated" };
+}
+
+function useUpdateCheck(notify) {
+  const [state, setState] = useState("idle"); // idle | checking | current | behind | updated | error | no-git
+  const [behind, setBehind] = useState(0);
+  const [detail, setDetail] = useState("");
+  const run = async (apply) => {
+    setState("checking");
+    const r = apply ? await applyUpdate() : await checkForUpdate();
+    if (r.status === "behind") setBehind(r.behind);
+    if (r.status === "error") setDetail(r.detail || "");
+    setState(r.status);
+    if (apply && r.status === "updated" && notify)
+      notify({ kind: "success", message: "h-stats updated — hot reload applies it in a moment" });
+    if (apply && r.status === "error" && notify)
+      notify({ kind: "error", message: "h-stats update failed: " + (r.detail || "unknown") });
+    return r;
+  };
+  // Throttled auto-check: at most once an hour, persisted per install.
+  useEffect(() => {
+    if (!_storage?.get) return;
+    let cancelled = false;
+    const last = Number(_storage.get(ID + ":last-check") || 0);
+    if (Date.now() - last < 3600_000) return;
+    _storage.set?.(ID + ":last-check", String(Date.now()));
+    checkForUpdate().then((r) => {
+      if (cancelled) return;
+      if (r.status === "behind") setBehind(r.behind);
+      setState(r.status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return { state, behind, detail, run };
+}
+
+function UpdateButton({ notify }) {
+  const { state, behind, detail, run } = useUpdateCheck(notify);
+  if (state === "no-git") return null; // not a git clone — nothing to update
+  const behindNow = state === "behind" && behind > 0;
+  return h(
+    "button",
+    {
+      title:
+        state === "behind"
+          ? `${behind} update${behind > 1 ? "s" : ""} available — click to pull`
+          : state === "checking"
+            ? "checking…"
+            : state === "error"
+              ? `check failed: ${detail} — click to retry`
+              : "check for updates",
+      onClick: () => run(behindNow),
+      className: cn(
+        "flex items-center gap-1 rounded px-1 text-[10px]",
+        behindNow ? "text-(--accent,#7c9cff)" : "text-(--ui-text-quaternary)",
+      ),
+    },
+    h(Codicon, { name: behindNow ? "cloud-download" : "sync", size: 12 }),
+    behindNow ? String(behind) : null,
+  );
 }
 
 let _storage = null;
